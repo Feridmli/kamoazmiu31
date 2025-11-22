@@ -70,7 +70,7 @@ app.get("/api/nfts", async (req, res) => {
     const { data, error } = await supabase
       .from("metadata")
       .select("*")
-      .order("tokenId", { ascending: true });
+      .order("tokenid", { ascending: true });
 
     if (error) throw error;
 
@@ -87,7 +87,7 @@ app.get("/api/nfts", async (req, res) => {
 app.post("/api/order", async (req, res) => {
   try {
     const {
-      tokenId,
+      tokenid,
       price,
       sellerAddress,
       buyerAddress,
@@ -109,7 +109,7 @@ app.post("/api/order", async (req, res) => {
     const { error } = await supabase.from("orders").upsert(
       {
         id,
-        tokenId: tokenId ? tokenId.toString() : null,
+        tokenid: tokenid ? tokenid.toString() : null,
         price: price || null,
         nftContract: process.env.NFT_CONTRACT_ADDRESS,
         marketplaceContract: process.env.SEAPORT_CONTRACT_ADDRESS,
