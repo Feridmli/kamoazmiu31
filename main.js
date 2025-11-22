@@ -1,4 +1,3 @@
-// ==================== main.js ====================
 import { ethers } from "ethers";
 import { Seaport } from "@opensea/seaport-js";
 
@@ -27,49 +26,39 @@ const noticeDiv = document.getElementById("notice");
 // ---------------- Utils ----------------
 function notify(msg, timeout = 3500) {
   noticeDiv.textContent = msg;
-  if (timeout) {
-    setTimeout(() => {
-      if (noticeDiv.textContent === msg) noticeDiv.textContent = "";
-    }, timeout);
-  }
+  if (timeout) setTimeout(() => { if (noticeDiv.textContent === msg) noticeDiv.textContent = ""; }, timeout);
 }
 
 // ---------------- Wallet Connect ----------------
 async function connectWallet() {
-  try {
-    if (!window.ethereum) return alert("Metamask tapılmadı!");
+  if (!window.ethereum) return alert("Metamask tapılmadı!");
 
-    provider = new ethers.providers.Web3Provider(window.ethereum, "any");
-    await provider.send("eth_requestAccounts", []);
-    signer = provider.getSigner();
-    userAddress = (await signer.getAddress()).toLowerCase();
+  provider = new ethers.providers.Web3Provider(window.ethereum, "any");
+  await provider.send("eth_requestAccounts", []);
+  signer = provider.getSigner();
+  userAddress = (await signer.getAddress()).toLowerCase();
 
-    const network = await provider.getNetwork();
-    if (network.chainId !== APECHAIN_ID) {
-      try {
-        await provider.send("wallet_addEthereumChain", [{
-          chainId: APECHAIN_ID_HEX,
-          chainName: "ApeChain Mainnet",
-          nativeCurrency: { name: "APE", symbol: "APE", decimals: 18 },
-          rpcUrls: ["https://rpc.apechain.com"],
-          blockExplorerUrls: ["https://apescan.io"]
-        }]);
-        notify("Şəbəkə əlavə edildi, yenidən qoşun.");
-        return;
-      } catch (e) { console.error(e); }
-    }
-
-    seaport = new Seaport(signer, { contractAddress: SEAPORT_CONTRACT_ADDRESS });
-
-    connectBtn.style.display = "none";
-    disconnectBtn.style.display = "inline-block";
-    addrSpan.textContent = userAddress.slice(0, 6) + "..." + userAddress.slice(-4);
-
-    loadNFTs();
-  } catch (err) {
-    console.error(err);
-    alert("Wallet connect xətası!");
+  const network = await provider.getNetwork();
+  if (network.chainId !== APECHAIN_ID) {
+    try {
+      await provider.send("wallet_addEthereumChain", [{
+        chainId: APECHAIN_ID_HEX,
+        chainName: "ApeChain Mainnet",
+        nativeCurrency: { name: "APE", symbol: "APE", decimals: 18 },
+        rpcUrls: ["https://rpc.apechain.com"],
+        blockExplorerUrls: ["https://apescan.io"]
+      }]);
+      notify("Şəbəkə əlavə edildi, yenidən qoşun."); return;
+    } catch (e) { console.error(e); }
   }
+
+  seaport = new Seaport(signer, { contractAddress: SEAPORT_CONTRACT_ADDRESS });
+
+  connectBtn.style.display = "none";
+  disconnectBtn.style.display = "inline-block";
+  addrSpan.textContent = userAddress.slice(0, 6) + "..." + userAddress.slice(-4);
+
+  loadNFTs();
 }
 
 // ---------------- Disconnect ----------------
@@ -112,14 +101,13 @@ async function loadNFTs() {
     for (const nft of batch) {
       const tokenId = nft.token_id;
       const name = nft.name || `Bear #${tokenId}`;
-      const image = "https://ipfs.io/ipfs/QmExampleNFTImage/default.png"; // sabit placeholder
+      const image = nft.image || "https://ipfs.io/ipfs/QmExampleNFTImage/default.png";
 
       const card = document.createElement("div");
       card.className = "nft-card";
 
       card.innerHTML = `
-        <img src="${image}" alt="NFT image"
-          onerror="this.src='https://ipfs.io/ipfs/QmExampleNFTImage/default.png'">
+        <img src="${image}" alt="NFT image" onerror="this.src='https://ipfs.io/ipfs/QmExampleNFTImage/default.png'">
         <h4>${name}</h4>
         <p class="price">Qiymət: -</p>
         <div class="nft-actions">
@@ -127,7 +115,6 @@ async function loadNFTs() {
           <button class="wallet-btn list-btn" data-token="${tokenId}">List</button>
         </div>
       `;
-
       marketplaceDiv.appendChild(card);
 
       card.querySelector(".buy-btn").onclick = async (ev) => {
@@ -145,9 +132,7 @@ async function loadNFTs() {
   } catch (err) {
     console.error(err);
     if (loadedCount === 0) marketplaceDiv.innerHTML = "<p>Xəta baş verdi.</p>";
-  } finally {
-    loadingNFTs = false;
-  }
+  } finally { loadingNFTs = false; }
 }
 
 // Scroll listener
@@ -182,14 +167,9 @@ async function buyNFT(nftRecord) {
       body: JSON.stringify({ orderHash: nftRecord.orderHash, buyerAddress: buyer })
     });
 
-    loadedCount = 0;
-    allNFTs = [];
-    marketplaceDiv.innerHTML = "";
+    loadedCount = 0; allNFTs = []; marketplaceDiv.innerHTML = "";
     loadNFTs();
-  } catch (err) {
-    console.error(err);
-    alert("Buy xətası: " + err.message);
-  }
+  } catch (err) { console.error(err); alert("Buy xətası: " + err.message); }
 }
 
 // ---------------- LIST NFT ----------------
@@ -245,9 +225,8 @@ async function listNFT(tokenId) {
   const j = await res.json();
   if (!j.success) return alert("Backend order-u qəbul etmədi!");
   notify(`NFT #${tokenId} list olundu — ${price} APE`);
-  loadedCount = 0;
-  allNFTs = [];
-  marketplaceDiv.innerHTML = "";
+
+  loadedCount = 0; allNFTs = []; marketplaceDiv.innerHTML = "";
   loadNFTs();
 }
 
