@@ -7,7 +7,10 @@ import fetch from "node-fetch";
 dotenv.config();
 
 // ---------------- Supabase ----------------
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 // ---------------- ENV ----------------
 const NFT_CONTRACT_ADDRESS = process.env.NFT_CONTRACT_ADDRESS;
@@ -37,11 +40,21 @@ const nftABI = [
 
 let nftContract = new ethers.Contract(NFT_CONTRACT_ADDRESS, nftABI, provider);
 
+// ---------------- Helper ----------------
+function convertIPFStoHTTP(uri) {
+  if (!uri) return null;
+  if (uri.startsWith("ipfs://")) {
+    return uri.replace("ipfs://", "https://ipfs.io/ipfs/");
+  }
+  return uri;
+}
+
 // ---------------- Process NFT ----------------
 async function processNFT(tokenId) {
   try {
     let owner, tokenURI, success = false;
 
+    // RPC retry
     for (let i = 0; i < RPC_LIST.length; i++) {
       try {
         owner = await nftContract.ownerOf(tokenId);
@@ -49,7 +62,7 @@ async function processNFT(tokenId) {
         success = true;
         break;
       } catch (err) {
-        console.warn(`RPC #${i+1} failed for tokenId ${tokenId}: ${err.message}`);
+        console.warn(`RPC #${i + 1} failed for tokenId ${tokenId}: ${err.message}`);
         provider = getProvider();
         nftContract = new ethers.Contract(NFT_CONTRACT_ADDRESS, nftABI, provider);
       }
@@ -57,10 +70,13 @@ async function processNFT(tokenId) {
 
     if (!success) throw new Error("All RPC endpoints failed");
 
+    // IPFS -> HTTP
+    const httpURI = convertIPFStoHTTP(tokenURI);
+
     // Metadata fetch
     let name = null;
     try {
-      const metadataRes = await fetch(tokenURI);
+      const metadataRes = await fetch(httpURI);
       const metadata = await metadataRes.json();
       name = metadata.name || `Bear #${tokenId}`;
     } catch (e) {
@@ -69,12 +85,15 @@ async function processNFT(tokenId) {
     }
 
     // Upsert to Supabase
-    await supabase.from("nfts").upsert({
-      token_id: tokenId.toString(),
-      nft_contract: NFT_CONTRACT_ADDRESS,
-      owner_address: owner.toLowerCase(),
-      name
-    }, { onConflict: "token_id" });
+    await supabase.from("nfts").upsert(
+      {
+        token_id: tokenId.toString(),
+        nft_contract: NFT_CONTRACT_ADDRESS,
+        owner_address: owner.toLowerCase(),
+        name,
+      },
+      { onConflict: "token_id" }
+    );
 
     console.log(`✅ NFT #${tokenId} saved. Owner: ${owner}, Name: ${name}`);
   } catch (e) {
@@ -90,7 +109,7 @@ async function main() {
 
     const BATCH_SIZE = 20;
     for (let i = 0; i < totalSupply; i += BATCH_SIZE) {
-      const batch = Array.from({length:BATCH_SIZE}, (_, j) => i+j).filter(id => id<totalSupply);
+      const batch = Array.from({ length: BATCH_SIZE }, (_, j) => i + j).filter(id => id < totalSupply);
       await Promise.allSettled(batch.map(tokenId => processNFT(tokenId)));
     }
 
