@@ -14,6 +14,7 @@ const supabase = createClient(
 
 // ---------------- ENV ----------------
 const NFT_CONTRACT_ADDRESS = process.env.NFT_CONTRACT_ADDRESS;
+const FROM_BLOCK = process.env.FROM_BLOCK || 0;
 
 // ---------------- RPC ----------------
 const RPC_LIST = [
@@ -32,9 +33,10 @@ function getProvider() {
 
 let provider = getProvider();
 
+// ---------------- NFT Contract ----------------
 const nftABI = [
+  "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
   "function ownerOf(uint256 tokenId) view returns (address)",
-  "function totalSupply() view returns (uint256)",
   "function tokenURI(uint256 tokenId) view returns (string)"
 ];
 
@@ -54,7 +56,6 @@ async function processNFT(tokenId) {
   try {
     let owner, tokenURI, success = false;
 
-    // RPC retry
     for (let i = 0; i < RPC_LIST.length; i++) {
       try {
         owner = await nftContract.ownerOf(tokenId);
@@ -70,10 +71,8 @@ async function processNFT(tokenId) {
 
     if (!success) throw new Error("All RPC endpoints failed");
 
-    // IPFS -> HTTP
     const httpURI = convertIPFStoHTTP(tokenURI);
 
-    // Metadata fetch
     let name = null;
     try {
       const metadataRes = await fetch(httpURI);
@@ -84,15 +83,14 @@ async function processNFT(tokenId) {
       name = `Bear #${tokenId}`;
     }
 
-    // Upsert to Supabase
-    await supabase.from("nfts").upsert(
+    await supabase.from("metadata").upsert(
       {
-        token_id: tokenId.toString(),
+        tokenId: tokenId.toString(),
         nft_contract: NFT_CONTRACT_ADDRESS,
         owner_address: owner.toLowerCase(),
         name,
       },
-      { onConflict: "token_id" }
+      { onConflict: "tokenId" }
     );
 
     console.log(`✅ NFT #${tokenId} saved. Owner: ${owner}, Name: ${name}`);
@@ -104,12 +102,18 @@ async function processNFT(tokenId) {
 // ---------------- Main ----------------
 async function main() {
   try {
-    const totalSupply = await nftContract.totalSupply();
-    console.log(`🚀 Total NFTs: ${totalSupply}`);
+    console.log("🚀 Fetching Transfer events to get tokenIds...");
+
+    // Transfer event filter
+    const filter = nftContract.filters.Transfer(null, null);
+    const events = await nftContract.queryFilter(filter, Number(FROM_BLOCK), "latest");
+
+    const tokenIds = [...new Set(events.map(ev => ev.args.tokenId.toNumber()))];
+    console.log(`📦 Total tokenIds found: ${tokenIds.length}`);
 
     const BATCH_SIZE = 20;
-    for (let i = 0; i < totalSupply; i += BATCH_SIZE) {
-      const batch = Array.from({ length: BATCH_SIZE }, (_, j) => i + j).filter(id => id < totalSupply);
+    for (let i = 0; i < tokenIds.length; i += BATCH_SIZE) {
+      const batch = tokenIds.slice(i, i + BATCH_SIZE);
       await Promise.allSettled(batch.map(tokenId => processNFT(tokenId)));
     }
 
