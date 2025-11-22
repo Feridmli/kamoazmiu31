@@ -14,9 +14,6 @@ const supabase = createClient(
 
 // ---------------- ENV ----------------
 const NFT_CONTRACT_ADDRESS = process.env.NFT_CONTRACT_ADDRESS;
-const FROM_BLOCK = process.env.FROM_BLOCK || 0;
-
-// ---------------- RPC ----------------
 const RPC_LIST = [
   process.env.APECHAIN_RPC,
   "https://rpc.apechain.com/http",
@@ -33,10 +30,10 @@ function getProvider() {
 
 let provider = getProvider();
 
-// ---------------- NFT Contract ----------------
+// ERC721A ABI
 const nftABI = [
-  "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
   "function ownerOf(uint256 tokenId) view returns (address)",
+  "function totalSupply() view returns (uint256)",
   "function tokenURI(uint256 tokenId) view returns (string)"
 ];
 
@@ -63,6 +60,10 @@ async function processNFT(tokenId) {
         success = true;
         break;
       } catch (err) {
+        if (err.message.includes("owner query for nonexistent token")) {
+          console.log(`⚠️ Token #${tokenId} mint olunmayıb, keçildi.`);
+          return;
+        }
         console.warn(`RPC #${i + 1} failed for tokenId ${tokenId}: ${err.message}`);
         provider = getProvider();
         nftContract = new ethers.Contract(NFT_CONTRACT_ADDRESS, nftABI, provider);
@@ -86,9 +87,8 @@ async function processNFT(tokenId) {
     await supabase.from("metadata").upsert(
       {
         tokenId: tokenId.toString(),
-        nft_contract: NFT_CONTRACT_ADDRESS,
-        owner_address: owner.toLowerCase(),
         name,
+        image: httpURI,
       },
       { onConflict: "tokenId" }
     );
@@ -102,22 +102,16 @@ async function processNFT(tokenId) {
 // ---------------- Main ----------------
 async function main() {
   try {
-    console.log("🚀 Fetching Transfer events to get tokenIds...");
-
-    // Transfer event filter
-    const filter = nftContract.filters.Transfer(null, null);
-    const events = await nftContract.queryFilter(filter, Number(FROM_BLOCK), "latest");
-
-    const tokenIds = [...new Set(events.map(ev => ev.args.tokenId.toNumber()))];
-    console.log(`📦 Total tokenIds found: ${tokenIds.length}`);
+    const totalSupply = await nftContract.totalSupply();
+    console.log(`🚀 Total minted NFTs: ${totalSupply}`);
 
     const BATCH_SIZE = 20;
-    for (let i = 0; i < tokenIds.length; i += BATCH_SIZE) {
-      const batch = tokenIds.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < totalSupply; i += BATCH_SIZE) {
+      const batch = Array.from({ length: BATCH_SIZE }, (_, j) => i + j).filter(id => id < totalSupply);
       await Promise.allSettled(batch.map(tokenId => processNFT(tokenId)));
     }
 
-    console.log("🎉 NFT owners + names sync tamamlandı!");
+    console.log("🎉 NFT owners + metadata sync tamamlandı!");
   } catch (err) {
     console.error("💀 Fatal error:", err.message);
     process.exit(1);
