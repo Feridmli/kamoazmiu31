@@ -109,8 +109,8 @@ async function loadNFTs() {
     loadedCount += batch.length;
 
     for (const nft of batch) {
-      const tokenId = nft.token_id;
-      let name = nft.name || `Bear #${tokenId}`;
+      const tokenid = nft.token_id; // ✅ Düzəliş
+      let name = nft.name || `Bear #${tokenid}`;
       let image = nft.image || "https://ipfs.io/ipfs/QmExampleNFTImage/default.png";
 
       if (image.startsWith("ipfs://")) image = image.replace("ipfs://", "https://ipfs.io/ipfs/");
@@ -124,8 +124,8 @@ async function loadNFTs() {
         <h4>${name}</h4>
         <p class="price">Qiymət: -</p>
         <div class="nft-actions">
-          <button class="wallet-btn buy-btn" data-id="${tokenId}">Buy</button>
-          <button class="wallet-btn list-btn" data-token="${tokenId}">List</button>
+          <button class="wallet-btn buy-btn" data-id="${tokenid}">Buy</button>
+          <button class="wallet-btn list-btn" data-token="${tokenid}">List</button>
         </div>
       `;
 
@@ -139,7 +139,7 @@ async function loadNFTs() {
 
       card.querySelector(".list-btn").onclick = async (ev) => {
         ev.target.disabled = true;
-        await listNFT(tokenId).catch(console.error);
+        await listNFT(tokenid).catch(console.error);
         ev.target.disabled = false;
       };
     }
@@ -163,8 +163,8 @@ async function buyNFT(nftRecord) {
   if (!signer || !seaport) return alert("Cüzdan qoşulmayıb!");
   notify("Alış hazırlanır...");
 
-  const rawOrder = nftRecord.seaportOrder || nftRecord.seaportorder || nftRecord.seaport_order || JSON.parse(nftRecord.seaportOrderJSON);
-  if (!rawOrder) return alert("Order boşdur!");
+  const rawOrder = nftRecord.seaportOrder || nftRecord.seaportorder || nftRecord.seaport_order || JSON.parse(nftRecord.seaportOrderJSON || "{}");
+  if (!rawOrder || Object.keys(rawOrder).length === 0) return alert("Order boşdur!");
 
   try {
     const buyer = await signer.getAddress();
@@ -194,7 +194,7 @@ async function buyNFT(nftRecord) {
 }
 
 // ---------------- LIST NFT ----------------
-async function listNFT(tokenId) {
+async function listNFT(tokenid) {
   if (!signer || !seaport) return alert("Cüzdan qoşulmayıb!");
   const seller = await signer.getAddress();
 
@@ -209,7 +209,7 @@ async function listNFT(tokenId) {
   );
 
   notify("Sahiblik yoxlanılır...");
-  const owner = (await nftContract.ownerOf(tokenId)).toLowerCase();
+  const owner = (await nftContract.ownerOf(tokenid)).toLowerCase();
   if (owner !== seller.toLowerCase()) return alert("Bu NFT sənin deyil!");
 
   let price = prompt("NFT neçə APE? (məs: 1.5)");
@@ -225,7 +225,7 @@ async function listNFT(tokenId) {
 
   notify("Seaport order yaradılır...");
   const createReq = {
-    offer:[{itemType:2, token:NFT_CONTRACT_ADDRESS, identifier:tokenId.toString()}],
+    offer:[{itemType:2, token:NFT_CONTRACT_ADDRESS, identifier:tokenid.toString()}],
     consideration:[{amount:priceWei.toString(), recipient:seller}],
     endTime:(Math.floor(Date.now()/1000)+86400*30).toString()
   };
@@ -240,12 +240,12 @@ async function listNFT(tokenId) {
   const res = await fetch(`${BACKEND_URL}/api/order`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tokenId, price:Number(price), sellerAddress:seller, seaportOrder:signed, orderHash, image:null })
+    body: JSON.stringify({ tokenid, price:Number(price), sellerAddress:seller, seaportOrder:signed, orderHash, image:null })
   });
 
   const j = await res.json();
   if (!j.success) return alert("Backend order-u qəbul etmədi!");
-  notify(`NFT #${tokenId} list olundu — ${price} APE`);
+  notify(`NFT #${tokenid} list olundu — ${price} APE`);
   loadedCount = 0;
   allNFTs = [];
   marketplaceDiv.innerHTML = "";
