@@ -14,14 +14,15 @@ const supabase = createClient(
 
 // ---------------- ENV ----------------
 const NFT_CONTRACT_ADDRESS = process.env.NFT_CONTRACT_ADDRESS;
+const MARKETPLACE_CONTRACT_ADDRESS = process.env.SEAPORT_CONTRACT_ADDRESS;
 const RPC_LIST = [
   process.env.APECHAIN_RPC,
   "https://rpc.apechain.com/http",
   "https://apechain.drpc.org",
   "https://33139.rpc.thirdweb.com",
 ];
-let providerIndex = 0;
 
+let providerIndex = 0;
 function getProvider() {
   const rpc = RPC_LIST[providerIndex % RPC_LIST.length];
   providerIndex++;
@@ -30,7 +31,7 @@ function getProvider() {
 
 let provider = getProvider();
 
-// ERC721A ABI
+// ---------------- ERC721A ABI ----------------
 const nftABI = [
   "function ownerOf(uint256 tokenId) view returns (address)",
   "function totalSupply() view returns (uint256)",
@@ -42,10 +43,7 @@ let nftContract = new ethers.Contract(NFT_CONTRACT_ADDRESS, nftABI, provider);
 // ---------------- Helper ----------------
 function convertIPFStoHTTP(uri) {
   if (!uri) return null;
-  if (uri.startsWith("ipfs://")) {
-    return uri.replace("ipfs://", "https://ipfs.io/ipfs/");
-  }
-  return uri;
+  return uri.startsWith("ipfs://") ? uri.replace("ipfs://", "https://ipfs.io/ipfs/") : uri;
 }
 
 // ---------------- Process NFT ----------------
@@ -84,13 +82,24 @@ async function processNFT(tokenId) {
       name = `Bear #${tokenId}`;
     }
 
+    const now = new Date().toISOString();
+
+    // ---------------- Supabase Upsert ----------------
     await supabase.from("metadata").upsert(
       {
-        tokenId: tokenId.toString(),
+        token_id: tokenId.toString(),
+        nft_contract: NFT_CONTRACT_ADDRESS,
+        marketplace_contract: MARKETPLACE_CONTRACT_ADDRESS,
+        buyer_address: owner.toLowerCase(),
+        seaport_order: null,
+        order_hash: null,
+        on_chain: true,
         name,
         image: httpURI,
+        createdat: now,
+        updatedat: now
       },
-      { onConflict: "tokenId" }
+      { onConflict: "token_id" }
     );
 
     console.log(`✅ NFT #${tokenId} saved. Owner: ${owner}, Name: ${name}`);
