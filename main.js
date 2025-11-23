@@ -16,7 +16,7 @@ let signer = null;
 let seaport = null;
 let userAddress = null;
 
-// ---------------- UI Elements ----------------
+// ---------------- UI ----------------
 const connectBtn = document.getElementById("connectBtn");
 const disconnectBtn = document.getElementById("disconnectBtn");
 const addrSpan = document.getElementById("addr");
@@ -26,14 +26,10 @@ const noticeDiv = document.getElementById("notice");
 // ---------------- Utils ----------------
 function notify(msg, timeout = 3500) {
   noticeDiv.textContent = msg;
-  if (timeout) {
-    setTimeout(() => {
-      if (noticeDiv.textContent === msg) noticeDiv.textContent = "";
-    }, timeout);
-  }
+  if (timeout) setTimeout(() => { if (noticeDiv.textContent === msg) noticeDiv.textContent = ""; }, timeout);
 }
 
-// ---------------- Wallet Connect ----------------
+// ---------------- Wallet ----------------
 async function connectWallet() {
   try {
     if (!window.ethereum) return alert("Metamask tapılmadı!");
@@ -65,13 +61,9 @@ async function connectWallet() {
     addrSpan.textContent = userAddress.slice(0, 6) + "..." + userAddress.slice(-4);
 
     await loadNFTs();
-  } catch (err) {
-    console.error(err);
-    alert("Wallet connect xətası!");
-  }
+  } catch (err) { console.error(err); alert("Wallet connect xətası!"); }
 }
 
-// ---------------- Disconnect ----------------
 disconnectBtn.onclick = () => {
   provider = signer = seaport = userAddress = null;
   connectBtn.style.display = "inline-block";
@@ -80,7 +72,6 @@ disconnectBtn.onclick = () => {
   marketplaceDiv.innerHTML = "";
   notify("Cüzdan ayırıldı", 2000);
 };
-
 connectBtn.onclick = connectWallet;
 
 // ---------------- Infinite Scroll ----------------
@@ -109,15 +100,13 @@ async function loadNFTs() {
     loadedCount += batch.length;
 
     for (const nft of batch) {
-      const tokenid = nft.token_id; // ✅ Düzəliş
+      const tokenid = nft.token_id;
       let name = nft.name || `Bear #${tokenid}`;
       let image = nft.image || "https://ipfs.io/ipfs/QmExampleNFTImage/default.png";
-
       if (image.startsWith("ipfs://")) image = image.replace("ipfs://", "https://ipfs.io/ipfs/");
 
       const card = document.createElement("div");
       card.className = "nft-card";
-
       card.innerHTML = `
         <img src="${image}" alt="NFT image"
           onerror="this.src='https://ipfs.io/ipfs/QmExampleNFTImage/default.png'">
@@ -128,7 +117,6 @@ async function loadNFTs() {
           <button class="wallet-btn list-btn" data-token="${tokenid}">List</button>
         </div>
       `;
-
       marketplaceDiv.appendChild(card);
 
       card.querySelector(".buy-btn").onclick = async (ev) => {
@@ -143,19 +131,12 @@ async function loadNFTs() {
         ev.target.disabled = false;
       };
     }
-  } catch (err) {
-    console.error(err);
-    if (loadedCount === 0) marketplaceDiv.innerHTML = "<p>Xəta baş verdi.</p>";
-  } finally {
-    loadingNFTs = false;
-  }
+  } catch (err) { console.error(err); if (loadedCount === 0) marketplaceDiv.innerHTML = "<p>Xəta baş verdi.</p>"; }
+  finally { loadingNFTs = false; }
 }
 
-// Scroll listener
 window.addEventListener("scroll", () => {
-  if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 300) {
-    loadNFTs();
-  }
+  if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 300) loadNFTs();
 });
 
 // ---------------- BUY NFT ----------------
@@ -163,7 +144,7 @@ async function buyNFT(nftRecord) {
   if (!signer || !seaport) return alert("Cüzdan qoşulmayıb!");
   notify("Alış hazırlanır...");
 
-  const rawOrder = nftRecord.seaportOrder || nftRecord.seaportorder || nftRecord.seaport_order || JSON.parse(nftRecord.seaportOrderJSON || "{}");
+  const rawOrder = nftRecord.seaport_order || JSON.parse(nftRecord.seaportOrderJSON || "{}");
   if (!rawOrder || Object.keys(rawOrder).length === 0) return alert("Order boşdur!");
 
   try {
@@ -171,8 +152,7 @@ async function buyNFT(nftRecord) {
     notify("Transaction göndərilir...");
 
     const result = await seaport.fulfillOrder({ order: rawOrder, accountAddress: buyer });
-    const executeTx = result.executeAllActions || result.execute;
-    const tx = await executeTx();
+    const tx = await (result.executeAllActions || result.execute)();
     await tx.wait();
 
     notify("NFT alındı! ✅");
@@ -180,17 +160,22 @@ async function buyNFT(nftRecord) {
     await fetch(`${BACKEND_URL}/api/buy`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderHash: nftRecord.orderHash, buyerAddress: buyer })
+      body: JSON.stringify({
+        token_id: nftRecord.token_id,
+        nft_contract: NFT_CONTRACT_ADDRESS,
+        marketplace_contract: SEAPORT_CONTRACT_ADDRESS,
+        buyer_address: buyer,
+        seaport_order: rawOrder,
+        order_hash: nftRecord.order_hash || null,
+        on_chain: true
+      })
     });
 
     loadedCount = 0;
     allNFTs = [];
     marketplaceDiv.innerHTML = "";
     loadNFTs();
-  } catch (err) {
-    console.error(err);
-    alert("Buy xətası: " + err.message);
-  }
+  } catch (err) { console.error(err); alert("Buy xətası: " + err.message); }
 }
 
 // ---------------- LIST NFT ----------------
@@ -225,27 +210,37 @@ async function listNFT(tokenid) {
 
   notify("Seaport order yaradılır...");
   const createReq = {
-    offer:[{itemType:2, token:NFT_CONTRACT_ADDRESS, identifier:tokenid.toString()}],
-    consideration:[{amount:priceWei.toString(), recipient:seller}],
-    endTime:(Math.floor(Date.now()/1000)+86400*30).toString()
+    offer: [{ itemType: 2, token: NFT_CONTRACT_ADDRESS, identifier: tokenid.toString() }],
+    consideration: [{ amount: priceWei.toString(), recipient: seller }],
+    endTime: (Math.floor(Date.now() / 1000) + 86400 * 30).toString()
   };
   const orderResult = await seaport.createOrder(createReq, seller);
-  const exec = orderResult.executeAllActions || orderResult.execute;
-  const signed = await exec();
-
+  const signed = await (orderResult.executeAllActions || orderResult.execute)();
   const signedOrder = signed.order || signed;
-  const orderHash = signedOrder.orderHash ?? signed.orderHash ?? null;
+
+  const orderHash = signedOrder.orderHash || null;
 
   notify("Order backend-ə göndərilir...");
   const res = await fetch(`${BACKEND_URL}/api/order`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tokenid, price:Number(price), sellerAddress:seller, seaportOrder:signed, orderHash, image:null })
+    body: JSON.stringify({
+      token_id: tokenid,
+      nft_contract: NFT_CONTRACT_ADDRESS,
+      marketplace_contract: SEAPORT_CONTRACT_ADDRESS,
+      buyer_address: null,
+      seaport_order: signed,
+      order_hash: orderHash,
+      on_chain: false,
+      createdat: new Date().toISOString(),
+      updatedat: new Date().toISOString()
+    })
   });
 
   const j = await res.json();
   if (!j.success) return alert("Backend order-u qəbul etmədi!");
   notify(`NFT #${tokenid} list olundu — ${price} APE`);
+
   loadedCount = 0;
   allNFTs = [];
   marketplaceDiv.innerHTML = "";
