@@ -27,9 +27,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(
-  helmet({
-    crossOriginResourcePolicy: false,
-  })
+  helmet({ crossOriginResourcePolicy: false })
 );
 app.use(cors());
 app.use(express.json({ limit: "20mb" }));
@@ -39,7 +37,6 @@ app.use(express.json({ limit: "20mb" }));
 // -----------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
 const distPath = path.join(__dirname, "dist");
 app.use(express.static(distPath));
 
@@ -47,33 +44,23 @@ app.get("/", (req, res) => {
   const indexFile = fs.existsSync(path.join(distPath, "index.html"))
     ? path.join(distPath, "index.html")
     : path.join(__dirname, "index.html");
-
   res.sendFile(indexFile);
 });
 
-// ================================
-// 📌 STATUS CHECK
-// ================================
+// ---------------- STATUS ----------------
 app.get("/api/status", (req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
-// ======================================================
-//                 🔥 API ROUTE-LAR
-// ======================================================
-
-// ================================
-// 📌 0) GET NFT METADATA LIST
-// ================================
+// ---------------- NFT LIST ----------------
 app.get("/api/nfts", async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("metadata")
       .select("*")
-      .order("tokenid", { ascending: true });
+      .order("token_id", { ascending: true });
 
     if (error) throw error;
-
     res.json({ success: true, nfts: data });
   } catch (err) {
     console.error("GET /api/nfts error:", err);
@@ -81,26 +68,22 @@ app.get("/api/nfts", async (req, res) => {
   }
 });
 
-// ================================
-// 📌 1) CREATE/UPSERT ORDER
-// ================================
+// ---------------- CREATE / UPSERT ORDER ----------------
 app.post("/api/order", async (req, res) => {
   try {
     const {
-      tokenid,
+      token_id,
       price,
-      sellerAddress,
-      buyerAddress,
-      seaportOrder,
-      orderHash,
+      seller_address,
+      buyer_address,
+      seaport_order,
+      order_hash,
       image,
       status = "active",
     } = req.body;
 
-    if (!sellerAddress || !seaportOrder || !orderHash) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Missing sellerAddress, orderHash or seaportOrder" });
+    if (!seller_address || !seaport_order || !order_hash) {
+      return res.status(400).json({ success: false, error: "Missing seller_address, seaport_order or order_hash" });
     }
 
     const id = nanoid();
@@ -109,25 +92,24 @@ app.post("/api/order", async (req, res) => {
     const { error } = await supabase.from("orders").upsert(
       {
         id,
-        tokenid: tokenid ? tokenid.toString() : null,
+        token_id: token_id ? token_id.toString() : null,
         price: price || null,
-        nftContract: process.env.NFT_CONTRACT_ADDRESS,
-        marketplaceContract: process.env.SEAPORT_CONTRACT_ADDRESS,
-        seller: sellerAddress.toLowerCase(),
-        buyerAddress: buyerAddress ? buyerAddress.toLowerCase() : null,
-        seaportOrder,
-        orderHash,
-        onChain: !!buyerAddress,
+        nft_contract: process.env.NFT_CONTRACT_ADDRESS,
+        marketplace_contract: process.env.SEAPORT_CONTRACT_ADDRESS,
+        seller_address: seller_address.toLowerCase(),
+        buyer_address: buyer_address ? buyer_address.toLowerCase() : null,
+        seaport_order,
+        order_hash,
+        on_chain: !!buyer_address,
         status,
         image: image || null,
         createdat: now,
         updatedat: now,
       },
-      { onConflict: "orderHash" }
+      { onConflict: "order_hash" }
     );
 
     if (error) throw error;
-
     res.json({ success: true });
   } catch (err) {
     console.error("POST /api/order error:", err);
@@ -135,9 +117,7 @@ app.post("/api/order", async (req, res) => {
   }
 });
 
-// ================================
-// 📌 2) GET ACTIVE ORDERS
-// ================================
+// ---------------- GET ORDERS ----------------
 app.get("/api/orders", async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -147,7 +127,6 @@ app.get("/api/orders", async (req, res) => {
       .limit(500);
 
     if (error) throw error;
-
     res.json({ success: true, orders: data });
   } catch (err) {
     console.error("GET /api/orders error:", err);
@@ -155,30 +134,27 @@ app.get("/api/orders", async (req, res) => {
   }
 });
 
-// ================================
-// 📌 3) BUY CALLBACK
-// ================================
+// ---------------- BUY CALLBACK ----------------
 app.post("/api/buy", async (req, res) => {
   try {
-    const { orderHash, buyerAddress } = req.body;
+    const { order_hash, buyer_address } = req.body;
 
-    if (!orderHash || !buyerAddress) {
-      return res.status(400).json({ success: false, error: "Missing orderHash or buyerAddress" });
+    if (!order_hash || !buyer_address) {
+      return res.status(400).json({ success: false, error: "Missing order_hash or buyer_address" });
     }
 
     const { data, error } = await supabase
       .from("orders")
       .update({
-        onChain: true,
-        buyerAddress: buyerAddress.toLowerCase(),
+        on_chain: true,
+        buyer_address: buyer_address.toLowerCase(),
         status: "fulfilled",
         updatedat: new Date().toISOString(),
       })
-      .eq("orderHash", orderHash)
+      .eq("order_hash", order_hash)
       .select();
 
     if (error) throw error;
-
     res.json({ success: true, order: data[0] });
   } catch (err) {
     console.error("POST /api/buy error:", err);
@@ -186,9 +162,7 @@ app.post("/api/buy", async (req, res) => {
   }
 });
 
-// ------------------------------------------------------
-// 🚀 START SERVER
-// ------------------------------------------------------
+// ---------------- START SERVER ----------------
 app.listen(PORT, () => {
   console.log(`🚀 Backend ${PORT}-də işləyir`);
 });
